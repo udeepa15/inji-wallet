@@ -211,7 +211,14 @@ public class InjiOpenID4VPModule extends ReactContextBaseJavaModule {
         ReadableArray readableArray = readableMap.getArray(key);
         List<T> list = new ArrayList<>();
         for (int i = 0; i < Objects.requireNonNull(readableArray).size(); i++) {
-            list.add(converter.apply(readableArray.getString(i)));
+            String value = readableArray.getString(i);
+            Log.d("InjiOpenID4VP", "Converting enum for key '" + key + "': " + value);
+            try {
+                list.add(converter.apply(value));
+            } catch (Exception e) {
+                Log.e("InjiOpenID4VP", "Failed to convert value '" + value + "' for key '" + key + "'", e);
+                throw e;
+            }
         }
         return list;
     }

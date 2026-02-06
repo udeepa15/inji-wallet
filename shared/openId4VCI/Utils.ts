@@ -49,9 +49,11 @@ export function getVcVerificationDetails(
   verifiableCredential,
   wellknown: Object,
 ): vcVerificationBannerDetails {
+  const credConfig = getVerifiableCredential(verifiableCredential);
   const credentialType = getCredentialTypeFromWellKnown(
     wellknown,
-    getVerifiableCredential(verifiableCredential).credentialConfigurationId,
+    credConfig.credentialConfigurationId,
+    vcMetadata?.displayName, // Pass displayName as fallback
   );
   return {
     statusType: statusType,
@@ -78,20 +80,23 @@ export const updateCredentialInformation = async (
       context.selectedCredentialType.format,
     );
   }
-  if( context.selectedCredentialType.format === VCFormat.vc_sd_jwt || context.selectedCredentialType.format === VCFormat.dc_sd_jwt) {
+  if (
+    context.selectedCredentialType.format === VCFormat.vc_sd_jwt ||
+    context.selectedCredentialType.format === VCFormat.dc_sd_jwt
+  ) {
     processedCredential = await VCProcessor.processForRendering(
       credential,
       context.selectedCredentialType.format,
-    )
+    );
   }
   let verifiableCredential;
   try {
     verifiableCredential = {
       ...credential,
       credentialConfigurationId: context.selectedCredentialType.id,
-      issuerLogo: getDisplayObjectForCurrentLanguage(
-        context.selectedIssuer.display,
-      )?.logo ?? "",
+      issuerLogo:
+        getDisplayObjectForCurrentLanguage(context.selectedIssuer.display)
+          ?.logo ?? '',
       processedCredential,
     };
   } catch (e) {
@@ -178,16 +183,19 @@ export const getCredentialIssuersWellKnownConfig = async (
             fields = ldpFields;
             wellknownFieldsFlag = true;
           }
-        }
-        else if( format === VCFormat.vc_sd_jwt || format === VCFormat.dc_sd_jwt) {
-          const sdJwtFields = flattenClaimPaths(matchingWellknownDetails.claims);
+        } else if (
+          format === VCFormat.vc_sd_jwt ||
+          format === VCFormat.dc_sd_jwt
+        ) {
+          const sdJwtFields = flattenClaimPaths(
+            matchingWellknownDetails.claims,
+          );
 
           if (sdJwtFields.length > 0) {
             fields = sdJwtFields;
-            wellknownFieldsFlag = true
+            wellknownFieldsFlag = true;
           }
-        }
-        else {
+        } else {
           console.error(`Unsupported credential format - ${format} found`);
           throw new UnsupportedVcFormat(format);
         }
@@ -234,7 +242,6 @@ const flattenClaimPaths = (
   });
 };
 
-
 export const getDetailedViewFields = async (
   issuerCacheKey: string,
   credentialConfigurationId: string,
@@ -252,7 +259,7 @@ export const getDetailedViewFields = async (
 
   let updatedFieldsList = response.fields.concat(DETAIL_VIEW_ADD_ON_FIELDS);
 
-  updatedFieldsList = removeBottomSectionFields(updatedFieldsList,format);
+  updatedFieldsList = removeBottomSectionFields(updatedFieldsList, format);
   return {
     matchingCredentialIssuerMetadata: response.matchingCredentialIssuerMetadata,
     fields: updatedFieldsList,

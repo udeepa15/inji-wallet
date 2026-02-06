@@ -164,7 +164,14 @@ export const VCItemActions = model => {
     storeVcInContext: send(
       //todo : separate handling done for openid4vci , handle commonly from vc machine
       (context: any) => {
-        const {serviceRefs, wellknownResponse, ...data} = context;
+        const {serviceRefs, ...data} = context;
+        console.log(
+          `\n💾 [storeVcInContext] Storing VC with well-known config`,
+        );
+        console.log(`   - VC Key: ${context.vcMetadata.getVcKey()}`);
+        console.log(
+          `   - Has wellknownResponse: ${!!context.wellknownResponse}`,
+        );
         return {
           type: 'VC_DOWNLOADED',
           vc: data,

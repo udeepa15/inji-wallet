@@ -35,7 +35,7 @@ import {
 } from '../shared/telemetry/TelemetryUtils';
 import {Buffer} from 'buffer';
 import {VC} from './VerifiableCredential/VCMetaMachine/vc';
-import { isVCStorageInitialised } from '../shared/fileStorage';
+import {isVCStorageInitialised} from '../shared/fileStorage';
 
 export const keyinvalidatedString =
   'Key Invalidated due to biometric enrollment';
@@ -638,23 +638,62 @@ export async function getVCsData(key: string, encryptionKey: string) {
 
     const vcsMetadata: VCMetadata[] = await getItem(key, null, encryptionKey);
 
+    console.log(`\n🔍 [getVCsData] Loading VCs from storage key: ${key}`);
+    console.log(
+      `📊 [getVCsData] Total VC metadata entries found: ${
+        vcsMetadata?.length || 0
+      }`,
+    );
+
     for (let ind in vcsMetadata) {
-      const vcKey = VCMetadata.fromVC(vcsMetadata[ind]).getVcKey();
+      const vcMetadata = vcsMetadata[ind];
+      const vcKey = VCMetadata.fromVC(vcMetadata).getVcKey();
+      console.log(
+        `\n📝 [getVCsData] [${parseInt(ind) + 1}/${
+          vcsMetadata.length
+        }] Processing VC:`,
+      );
+      console.log(`   - VC Key: ${vcKey}`);
+      console.log(`   - Issuer: ${vcMetadata.issuer || 'unknown'}`);
+      console.log(`   - Format: ${vcMetadata.format || 'unknown'}`);
+      console.log(
+        `   - Credential Type: ${vcMetadata.credentialType || 'unknown'}`,
+      );
+      console.log(`   - Protocol: ${vcMetadata.protocol || 'unknown'}`);
+
       try {
         const vc = await getItem(vcKey, null, encryptionKey);
         vcsData[vcKey] = vc;
+        console.log(`   ✅ Successfully loaded VC data for ${vcKey}`);
       } catch (e) {
-        console.error(`error occurred while getting vc's data - ${vcKey}`, e);
+        console.error(`   ❌ Error loading VC data for ${vcKey}:`, e.message);
         if (
           e.message.includes(tamperedErrorMessageString) ||
           e.message.includes(ENOENT)
         ) {
           tamperedVcsList = [...tamperedVcsList, vcsMetadata[ind]];
+          console.warn(
+            `   ⚠️  VC marked as TAMPERED or FILE NOT FOUND: ${vcKey}`,
+          );
         } else {
+          console.error(`   💥 Unexpected error (rethrowing):`, e);
           throw e;
         }
       }
     }
+
+    console.log(`\n📊 [getVCsData] Loading Summary:`);
+    console.log(`   - Successfully loaded: ${Object.keys(vcsData).length}`);
+    console.log(`   - Tampered/Missing: ${tamperedVcsList.length}`);
+    console.log(`   - Total metadata: ${vcsMetadata.length}`);
+
+    if (tamperedVcsList.length > 0) {
+      console.warn(
+        `⚠️  Tampered VCs:`,
+        tamperedVcsList.map(vc => VCMetadata.fromVC(vc).getVcKey()),
+      );
+    }
+
     return {vcsData, vcsMetadata, tamperedVcsList};
   } catch (e) {
     throw e;

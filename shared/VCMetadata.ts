@@ -125,7 +125,21 @@ export class VCMetadata {
 }
 
 export function parseMetadatas(metadataStrings: object[]) {
-  return metadataStrings.map(o => new VCMetadata(o));
+  console.log(
+    `\n🔄 [parseMetadatas] Parsing ${
+      metadataStrings?.length || 0
+    } VC metadata entries`,
+  );
+  const parsed = metadataStrings.map((o, index) => {
+    const metadata = new VCMetadata(o);
+    console.log(
+      `   [${index + 1}] ${metadata.getVcKey()} - ${
+        metadata.credentialType || 'no type'
+      } (${metadata.format})`,
+    );
+    return metadata;
+  });
+  return parsed;
 }
 
 export const getVCMetadata = (context: object, keyType: string) => {
@@ -142,7 +156,7 @@ export const getVCMetadata = (context: object, keyType: string) => {
     try {
       const url = new URL(issuerHost);
       return url.hostname.split('.')[0];
-    }catch (error) {
+    } catch (error) {
       // Fallback to issuerHost if URL parsing fails
       return issuerHost;
     }
@@ -162,7 +176,10 @@ export const getVCMetadata = (context: object, keyType: string) => {
     ),
     format: context['credentialWrapper'].format,
     downloadKeyType: keyType,
-    credentialType: getCredentialType(context.selectedCredentialType),
+    credentialType: getCredentialType(
+      context.selectedCredentialType,
+      context['credentialWrapper']?.verifiableCredential?.processedCredential,
+    ),
     issuerHost: issuerHost,
   });
 };

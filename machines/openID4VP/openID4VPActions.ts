@@ -260,9 +260,34 @@ function getVcsMatchingAuthRequest(context, event) {
   const inputDescriptors = presentationDefinition['input_descriptors'];
   let hasFormatOrConstraints = false;
 
+  console.log('🔍 [VP MATCHING] Starting credential matching process');
+  console.log('🔍 [VP MATCHING] Number of VCs to check:', vcs.length);
+  console.log(
+    '🔍 [VP MATCHING] Number of input descriptors:',
+    inputDescriptors.length,
+  );
+  console.log(
+    '🔍 [VP MATCHING] Presentation definition:',
+    JSON.stringify(presentationDefinition, null, 2),
+  );
+
   vcs.forEach(vc => {
+    console.log('\n🔍 [VP MATCHING] ===== Checking VC =====');
+    console.log('🔍 [VP MATCHING] VC format:', vc.format);
+    console.log('🔍 [VP MATCHING] VC ID:', vc.id);
+    console.log(
+      '🔍 [VP MATCHING] VC credential type/vct:',
+      vc.verifiableCredential?.credential?.vct ||
+        vc.verifiableCredential?.credential?.type,
+    );
+
     inputDescriptors.forEach(inputDescriptor => {
+      console.log(
+        '🔍 [VP MATCHING] --- Checking input descriptor:',
+        inputDescriptor.id,
+      );
       const format = inputDescriptor.format ?? presentationDefinition.format;
+      console.log('🔍 [VP MATCHING] Required format:', JSON.stringify(format));
       hasFormatOrConstraints =
         hasFormatOrConstraints ||
         format !== undefined ||
@@ -270,6 +295,10 @@ function getVcsMatchingAuthRequest(context, event) {
 
       const areMatchingFormatAndProofType =
         areVCFormatAndProofTypeMatchingRequest(format, vc);
+      console.log(
+        '🔍 [VP MATCHING] Format/proof match result:',
+        areMatchingFormatAndProofType,
+      );
       if (areMatchingFormatAndProofType == false) {
         inputDescriptors.forEach(inputDescriptor => {
           if (inputDescriptor.constraints?.fields) {
@@ -295,17 +324,49 @@ function getVcsMatchingAuthRequest(context, event) {
         vc,
         requestedClaimsByVerifier,
       );
+      console.log(
+        '🔍 [VP MATCHING] Constraint match result:',
+        isMatchingConstraints,
+      );
 
       let shouldInclude: boolean;
       if (inputDescriptor.constraints.fields && format) {
         shouldInclude = isMatchingConstraints && areMatchingFormatAndProofType;
+        console.log(
+          '🔍 [VP MATCHING] Decision logic: fields AND format both required',
+        );
       } else {
         shouldInclude = isMatchingConstraints || areMatchingFormatAndProofType;
+        console.log(
+          '🔍 [VP MATCHING] Decision logic: fields OR format (either works)',
+        );
       }
+      console.log(
+        '🔍 [VP MATCHING] Final decision - shouldInclude:',
+        shouldInclude,
+      );
 
       if (shouldInclude) {
         if (!matchingVCs[inputDescriptor.id]) {
           matchingVCs[inputDescriptor.id] = [];
+        }
+        console.log('🔍 [VP MATCHING] ✅ VC matched! Adding to matchingVCs');
+        try {
+          const vcKey = vc.vcMetadata?.getVcKey
+            ? vc.vcMetadata.getVcKey()
+            : JSON.stringify(vc.vcMetadata);
+          console.log(`   - VC Key: ${vcKey}`);
+          console.log(`   - VC format: ${vc.format}`);
+          console.log(`   - VC has vcMetadata: ${!!vc.vcMetadata}`);
+          console.log(`   - vcMetadata type: ${typeof vc.vcMetadata}`);
+          console.log(
+            `   - VC has verifiableCredential: ${!!vc.verifiableCredential}`,
+          );
+          console.log(
+            `   - credentialConfigurationId: ${vc.verifiableCredential?.credentialConfigurationId}`,
+          );
+        } catch (e) {
+          console.log(`   ⚠️  Error logging VC details:`, e.message);
         }
         matchingVCs[inputDescriptor.id].push(vc);
       }
@@ -376,10 +437,39 @@ function areVCFormatAndProofTypeMatchingRequest(
     try {
       const sdJwt = vc.verifiableCredential?.credential;
       const alg = extractAlgFromSdJwt(sdJwt);
-
-      return Object.entries(requestFormat).some(
-        ([type, value]) => type === vcFormatType && value["sd-jwt_alg_values"]?.includes(alg),
+      console.log('🔍 [FORMAT MATCH] SD-JWT algorithm from VC:', alg);
+      console.log(
+        '🔍 [FORMAT MATCH] Required algorithms:',
+        JSON.stringify(requestFormat),
       );
+
+      const matchResult = Object.entries(requestFormat).some(
+        ([type, value]) => {
+          const typeMatch = type === vcFormatType;
+          const algMatch = value['sd-jwt_alg_values']?.includes(alg);
+          console.log(
+            '🔍 [FORMAT MATCH] Type match:',
+            typeMatch,
+            '(',
+            type,
+            '==',
+            vcFormatType,
+            ')',
+          );
+          console.log(
+            '🔍 [FORMAT MATCH] Alg match:',
+            algMatch,
+            '(',
+            alg,
+            'in',
+            value['sd-jwt_alg_values'],
+            ')',
+          );
+          return typeMatch && algMatch;
+        },
+      );
+      console.log('🔍 [FORMAT MATCH] SD-JWT final match result:', matchResult);
+      return matchResult;
     } catch (e) {
       console.error('Error processing SD-JWT alg match:', e);
       return false;
@@ -395,18 +485,44 @@ function isVCMatchingRequestConstraints(
   requestedClaimsByVerifier: Set<string>,
 ): boolean {
   if (!constraints.fields) {
+    console.log('🔍 [CONSTRAINT MATCH] No constraint fields to check');
     return false;
   }
+  console.log(
+    '🔍 [CONSTRAINT MATCH] Checking',
+    constraints.fields.length,
+    'constraint fields',
+  );
+
   return constraints.fields.every(field => {
+    console.log('🔍 [CONSTRAINT MATCH] Field paths to check:', field.path);
+    console.log(
+      '🔍 [CONSTRAINT MATCH] Field filter:',
+      JSON.stringify(field.filter),
+    );
+    console.log('🔍 [CONSTRAINT MATCH] Field optional:', field.optional);
+
     return field.path.some(path => {
       const pathArray = JSONPath.toPathArray(path);
       const claimName = pathArray[pathArray.length - 1];
       requestedClaimsByVerifier.add(claimName);
       const processedCredential = fetchCredentialBasedOnFormat(credential);
+      console.log('🔍 [CONSTRAINT MATCH] Searching for path:', path);
+      console.log(
+        '🔍 [CONSTRAINT MATCH] In credential:',
+        JSON.stringify(processedCredential, null, 2),
+      );
+
       const jsonPathMatches = JSONPath({
         path: path,
         json: processedCredential,
       });
+      console.log(
+        '🔍 [CONSTRAINT MATCH] JSONPath matches found:',
+        jsonPathMatches?.length || 0,
+        '- Values:',
+        JSON.stringify(jsonPathMatches),
+      );
       if (!jsonPathMatches || jsonPathMatches.length === 0) {
         return false;
       }

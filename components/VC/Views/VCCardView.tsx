@@ -28,6 +28,7 @@ export const VCCardView: React.FC<VCItemProps> = ({
   isInitialLaunch = false,
   isTopCard = false,
   onDisclosuresChange,
+  requestedClaims,
 }) => {
   const controller = useVcItemController(vcMetadata);
   const {t} = useTranslation();
@@ -49,25 +50,92 @@ export const VCCardView: React.FC<VCItemProps> = ({
 
   useEffect(() => {
     async function loadVc() {
+      console.log(`\n🔍 [VCCardView] VC loading check (useEffect triggered):`);
+      console.log(`   - isDownloading: ${isDownloading}`);
+      console.log(`   - Has controller.credential: ${!!controller.credential}`);
+
       if (!isDownloading) {
-        const processedData = await VCProcessor.processForRendering(
-          controller.credential,
-          controller.verifiableCredentialData.format,
-        );
-        setVc(processedData);
+        console.log(`   ✓ Not downloading, checking credential...`);
+        if (!controller.credential) {
+          console.warn(`   ⚠️  No credential in controller - cannot process`);
+          return;
+        }
+
+        console.log(`   ✓ Has credential, entering try block...`);
+        try {
+          console.log(
+            `\n🎴🎴🎴 [VCCardView] INSIDE TRY BLOCK - Processing VC for rendering`,
+          );
+          console.log(`   - VC Key: ${vcMetadata?.getVcKey()}`);
+          console.log(
+            `   - Format: ${controller.verifiableCredentialData.format}`,
+          );
+          console.log(
+            `   - Credential Type: ${vcMetadata?.credentialType || 'unknown'}`,
+          );
+          console.log(`   - Issuer: ${vcMetadata?.issuer}`);
+          console.log(`   - Credential type: ${typeof controller.credential}`);
+          console.log(`   🔄 Starting VCProcessor.processForRendering...`);
+
+          const processedData = await VCProcessor.processForRendering(
+            controller.credential,
+            controller.verifiableCredentialData.format,
+          );
+
+          console.log(`   ✅ VC processed successfully`);
+          console.log(
+            `   - Processed data keys: ${Object.keys(processedData || {}).join(
+              ', ',
+            )}`,
+          );
+          if (processedData?.fullResolvedPayload?.vct) {
+            console.log(
+              `   - SD-JWT vct: ${processedData.fullResolvedPayload.vct}`,
+            );
+          }
+          console.log(`   💾 Setting vc state...`);
+          setVc(processedData);
+          console.log(`   ✅ VC state set successfully`);
+        } catch (error) {
+          console.error(`   ❌ Failed to process VC:`, error);
+          console.error(`   Error message:`, error?.message);
+          console.error(`   Error stack:`, error?.stack);
+        }
+      } else {
+        console.log(`   ⏸️  Skipping - isDownloading is true`);
       }
     }
     loadVc();
   }, [isDownloading, controller.credential]);
 
   useEffect(() => {
-    if (!verifiableCredentialData || !verifiableCredentialData.vcMetadata) return;
+    if (!verifiableCredentialData || !verifiableCredentialData.vcMetadata)
+      return;
     const {
       credentialConfigurationId,
-      vcMetadata: { format },
+      vcMetadata: {format},
     } = verifiableCredentialData;
 
+    // Check if well-known config is already stored with the VC
+    if (
+      controller.wellknownResponse &&
+      Object.keys(controller.wellknownResponse).length > 0
+    ) {
+      console.log(
+        `\n📦 [VCCardView] Using stored well-known config (no fetch needed)`,
+      );
+      console.log(`   - VC Key: ${vcMetadata?.getVcKey()}`);
+      setWellknown(controller.wellknownResponse);
+      setFields(CARD_VIEW_DEFAULT_FIELDS);
+      return;
+    }
+
     if (vcMetadata.issuerHost) {
+      console.log(`\n🌐 [VCCardView] Fetching well-known config:`);
+      console.log(`   - Issuer Host: ${vcMetadata.issuerHost}`);
+      console.log(`   - Credential Config ID: ${credentialConfigurationId}`);
+      console.log(`   - Format: ${format}`);
+
       getCredentialIssuersWellKnownConfig(
         vcMetadata.issuerHost,
         CARD_VIEW_DEFAULT_FIELDS,
@@ -77,23 +145,40 @@ export const VCCardView: React.FC<VCItemProps> = ({
       )
         .then(response => {
           if (response && response.matchingCredentialIssuerMetadata) {
+            console.log(`   ✅ Well-known config fetched successfully`);
             setWellknown(response.matchingCredentialIssuerMetadata);
+          } else {
+            console.warn(
+              `   ⚠️  No matching credential metadata in well-known, using fallback`,
+            );
+            setWellknown({fallback: 'true'});
           }
           setFields(response.fields);
         })
         .catch(error => {
-          setWellknown({fallback: 'true'});
           console.error(
-            'Error occurred while fetching wellknown for viewing VC ',
-            error,
+            `   ❌ Failed to fetch well-known config:`,
+            error.message,
           );
+          console.log(`   ⚠️  Using fallback mode (will use vct if available)`);
+          setWellknown({fallback: 'true'});
         });
     }
   }, [verifiableCredentialData]);
 
-  if (!isVCLoaded(controller.credential) || !wellknown || !vc) {
+  const canRender = isVCLoaded(controller.credential) && wellknown && vc;
+
+  if (!canRender) {
+    console.log(`\n⏳ [VCCardView] Showing skeleton - Waiting for:`);
+    console.log(`   - VC Loaded: ${isVCLoaded(controller.credential)}`);
+    console.log(`   - Well-known: ${!!wellknown}`);
+    console.log(`   - Processed VC: ${!!vc}`);
     return <VCCardSkeleton />;
   }
+
+  console.log(
+    `✅ [VCCardView] Rendering VC card for ${vcMetadata?.getVcKey()}`,
+  );
 
   const CardViewContent = () => (
     <VCCardViewContent
@@ -113,6 +198,7 @@ export const VCCardView: React.FC<VCItemProps> = ({
       KEBAB_POPUP={controller.KEBAB_POPUP}
       isInitialLaunch={isInitialLaunch}
       onDisclosuresChange={onDisclosuresChange}
+      requestedClaims={requestedClaims}
     />
   );
 
@@ -162,4 +248,5 @@ export interface VCItemProps {
   isInitialLaunch?: boolean;
   isTopCard?: boolean;
   onDisclosuresChange?: (paths: string[]) => void;
+  requestedClaims?: string; // Comma-separated list of claims requested by verifier
 }

@@ -32,7 +32,24 @@ export const VCMetaActions = (model: any) => {
     }),
 
     getVcItemResponse: respond((context: any, event: any) => {
+      let requestedVcKey;
+      try {
+        requestedVcKey = VCMetadata.fromVC(event.vcMetadata)?.getVcKey();
+        console.log(`\n🔎 [GET_VC_ITEM] Looking up VC:`);
+        console.log(`   - Requested VC Key: ${requestedVcKey}`);
+        console.log(`   - vcMetadata type: ${typeof event.vcMetadata}`);
+        console.log(`   - Total myVcs: ${Object.keys(context.myVcs).length}`);
+        console.log(
+          `   - Total myVcsMetadata: ${context.myVcsMetadata?.length || 0}`,
+        );
+        console.log(`   - myVcs keys:`, Object.keys(context.myVcs).slice(0, 5));
+      } catch (e) {
+        console.error(`   ❌ Error getting VC key:`, e.message);
+        requestedVcKey = null;
+      }
+
       if (context.tamperedVcs.includes(event.vcMetadata)) {
+        console.log(`   ⚠️  VC is tampered!`);
         return {
           type: 'TAMPERED_VC',
         };
@@ -40,16 +57,24 @@ export const VCMetaActions = (model: any) => {
 
       const isMyVCs = context.myVcsMetadata?.filter(
         (vcMetadataObject: Object) => {
-          return (
-            new VCMetadata(vcMetadataObject).getVcKey() ===
-            VCMetadata.fromVC(event.vcMetadata)?.getVcKey()
-          );
+          return new VCMetadata(vcMetadataObject).getVcKey() === requestedVcKey;
         },
       ).length;
 
+      console.log(`   - Found in myVcsMetadata: ${isMyVCs > 0}`);
+      console.log(`   - Looking in: ${isMyVCs ? 'myVcs' : 'receivedVcs'}`);
+
       const vcData = isMyVCs
-        ? context.myVcs[VCMetadata.fromVC(event.vcMetadata)?.getVcKey()]
-        : context.receivedVcs[VCMetadata.fromVC(event.vcMetadata)?.getVcKey()];
+        ? context.myVcs[requestedVcKey]
+        : context.receivedVcs[requestedVcKey];
+
+      console.log(`   - VC Data found: ${!!vcData}`);
+      if (vcData) {
+        console.log(
+          `   - VC has credentialConfigurationId: ${vcData.verifiableCredential?.credentialConfigurationId}`,
+        );
+        console.log(`   - VC format: ${vcData.format}`);
+      }
 
       return {
         type: 'GET_VC_RESPONSE',
@@ -70,25 +95,59 @@ export const VCMetaActions = (model: any) => {
 
     setMyVcs: model.assign({
       myVcs: (_context, event) => {
-        return event.response.vcsData;
+        const vcsData = event.response.vcsData;
+        console.log(`\n💼 [setMyVcs] Setting My VCs in state:`);
+        console.log(`   - Total VCs loaded: ${Object.keys(vcsData).length}`);
+        console.log(`   - VC Keys:`, Object.keys(vcsData));
+        return vcsData;
       },
       tamperedVcs: (context, event) => {
-        return [...context.tamperedVcs, ...event.response.tamperedVcsList];
+        const newTampered = [
+          ...context.tamperedVcs,
+          ...event.response.tamperedVcsList,
+        ];
+        if (event.response.tamperedVcsList.length > 0) {
+          console.warn(
+            `   ⚠️  Tampered VCs found in My VCs: ${event.response.tamperedVcsList.length}`,
+          );
+        }
+        return newTampered;
       },
       myVcsMetadata: (_context, event) => {
-        return parseMetadatas((event.response.vcsMetadata || []) as object[]);
+        const metadata = parseMetadatas(
+          (event.response.vcsMetadata || []) as object[],
+        );
+        console.log(`   - Metadata count: ${metadata.length}`);
+        return metadata;
       },
     }),
 
     setReceivedVcs: model.assign({
       receivedVcs: (_context, event) => {
-        return event.response.vcsData;
+        const vcsData = event.response.vcsData;
+        console.log(`\n📥 [setReceivedVcs] Setting Received VCs in state:`);
+        console.log(`   - Total VCs loaded: ${Object.keys(vcsData).length}`);
+        console.log(`   - VC Keys:`, Object.keys(vcsData));
+        return vcsData;
       },
       tamperedVcs: (context, event) => {
-        return [...context.tamperedVcs, ...event.response.tamperedVcsList];
+        const newTampered = [
+          ...context.tamperedVcs,
+          ...event.response.tamperedVcsList,
+        ];
+        if (event.response.tamperedVcsList.length > 0) {
+          console.warn(
+            `   ⚠️  Tampered VCs found in Received VCs: ${event.response.tamperedVcsList.length}`,
+          );
+        }
+        return newTampered;
       },
       receivedVcsMetadata: (_context, event) => {
-        return parseMetadatas((event.response.vcsMetadata || []) as object[]);
+        const metadata = parseMetadatas(
+          (event.response.vcsMetadata || []) as object[],
+        );
+        console.log(`   - Metadata count: ${metadata.length}`);
+        return metadata;
       },
     }),
 
