@@ -349,35 +349,102 @@ function getVcsMatchingAuthRequest(context, event) {
       if (shouldInclude) {
         if (!matchingVCs[inputDescriptor.id]) {
           matchingVCs[inputDescriptor.id] = [];
+          console.log(
+            `🪣 [BUCKET] Created new bucket for descriptor: "${inputDescriptor.id}"`,
+          );
         }
-        console.log('🔍 [VP MATCHING] ✅ VC matched! Adding to matchingVCs');
         try {
           const vcKey = vc.vcMetadata?.getVcKey
             ? vc.vcMetadata.getVcKey()
             : JSON.stringify(vc.vcMetadata);
-          console.log(`   - VC Key: ${vcKey}`);
-          console.log(`   - VC format: ${vc.format}`);
-          console.log(`   - VC has vcMetadata: ${!!vc.vcMetadata}`);
-          console.log(`   - vcMetadata type: ${typeof vc.vcMetadata}`);
+          const vcIdentifier =
+            vc.verifiableCredential?.credential?.vct ||
+            vc.verifiableCredential?.credential?.type ||
+            vc.verifiableCredential?.credentialConfigurationId ||
+            vcKey;
           console.log(
-            `   - VC has verifiableCredential: ${!!vc.verifiableCredential}`,
+            `🪣 [BUCKET] ✅ Adding VC to bucket "${inputDescriptor.id}"`,
           );
+          console.log(`🪣 [BUCKET]    VC identifier : ${vcIdentifier}`);
+          console.log(`🪣 [BUCKET]    VC format     : ${vc.format}`);
+          console.log(`🪣 [BUCKET]    VC key        : ${vcKey}`);
           console.log(
-            `   - credentialConfigurationId: ${vc.verifiableCredential?.credentialConfigurationId}`,
+            `🪣 [BUCKET]    Bucket size after add: ${
+              matchingVCs[inputDescriptor.id].length + 1
+            }`,
           );
         } catch (e) {
-          console.log(`   ⚠️  Error logging VC details:`, e.message);
+          console.log(`🪣 [BUCKET] ⚠️  Error logging VC details:`, e.message);
         }
         matchingVCs[inputDescriptor.id].push(vc);
+      } else {
+        try {
+          const vcKey = vc.vcMetadata?.getVcKey
+            ? vc.vcMetadata.getVcKey()
+            : JSON.stringify(vc.vcMetadata);
+          console.log(
+            `🪣 [BUCKET] ❌ VC did NOT match descriptor "${inputDescriptor.id}" — skipping`,
+          );
+          console.log(`🪣 [BUCKET]    VC key: ${vcKey}`);
+        } catch (e) {
+          // ignore logging error
+        }
       }
     });
   });
 
+  // ── Bucket summary ──────────────────────────────────────────────────────────
+  console.log('\n🪣 [BUCKET SUMMARY] ==============================');
+  console.log(
+    `🪣 [BUCKET SUMMARY] Total descriptors in PD : ${inputDescriptors.length}`,
+  );
+  console.log(
+    `🪣 [BUCKET SUMMARY] Descriptors with matches: ${
+      Object.keys(matchingVCs).length
+    }`,
+  );
+  inputDescriptors.forEach(descriptor => {
+    const bucket = matchingVCs[descriptor.id];
+    const count = bucket ? bucket.length : 0;
+    const status = count > 0 ? '✅' : '❌ UNSATISFIED';
+    console.log(
+      `🪣 [BUCKET SUMMARY]   "${descriptor.id}" → ${count} VC(s) ${status}`,
+    );
+    if (bucket && bucket.length > 0) {
+      bucket.forEach((matchedVc, idx) => {
+        try {
+          const vcKey = matchedVc.vcMetadata?.getVcKey
+            ? matchedVc.vcMetadata.getVcKey()
+            : JSON.stringify(matchedVc.vcMetadata);
+          const vcIdentifier =
+            matchedVc.verifiableCredential?.credential?.vct ||
+            matchedVc.verifiableCredential?.credential?.type ||
+            matchedVc.verifiableCredential?.credentialConfigurationId ||
+            vcKey;
+          console.log(
+            `🪣 [BUCKET SUMMARY]     [${idx}] ${vcIdentifier} (${matchedVc.format})`,
+          );
+        } catch (e) {
+          console.log(`🪣 [BUCKET SUMMARY]     [${idx}] <error reading vc>`);
+        }
+      });
+    }
+  });
+  console.log('🪣 [BUCKET SUMMARY] ==============================\n');
+  // ────────────────────────────────────────────────────────────────────────────
+
   if (!hasFormatOrConstraints && inputDescriptors.length > 0) {
+    console.log(
+      '🪣 [BUCKET] ⚠️  No format or constraints found anywhere in PD — assigning ALL VCs to first descriptor:',
+      inputDescriptors[0].id,
+    );
     matchingVCs[inputDescriptors[0].id] = vcs;
   }
 
   if (Object.keys(matchingVCs).length === 0) {
+    console.log(
+      '🪣 [BUCKET] 🚨 No VCs matched any descriptor — sending error to verifier',
+    );
     OpenID4VP.sendErrorToVerifier(
       OVP_ERROR_MESSAGES.NO_MATCHING_VCS,
       OVP_ERROR_CODE.NO_MATCHING_VCS,
@@ -530,9 +597,51 @@ function isVCMatchingRequestConstraints(
         if (!field.filter) {
           return true;
         }
-        return (
-          field.filter.type === undefined || field.filter.type === typeof match
+
+        const typeMatches =
+          field.filter.type === undefined || field.filter.type === typeof match;
+
+        if (!typeMatches) {
+          console.log(
+            '🔍 [CONSTRAINT MATCH] ❌ type check failed:',
+            `expected "${
+              field.filter.type
+            }", got "${typeof match}" for value "${match}"`,
+          );
+          return false;
+        }
+
+        if (field.filter.pattern !== undefined) {
+          try {
+            const regex = new RegExp(field.filter.pattern);
+            const patternMatches = regex.test(String(match));
+            console.log(
+              '🔍 [CONSTRAINT MATCH] pattern check:',
+              `/${field.filter.pattern}/.test("${match}") =`,
+              patternMatches,
+            );
+            if (!patternMatches) {
+              console.log(
+                '🔍 [CONSTRAINT MATCH] ❌ pattern check failed for value:',
+                match,
+              );
+              return false;
+            }
+          } catch (e) {
+            console.error(
+              '🔍 [CONSTRAINT MATCH] ⚠️  Invalid regex pattern:',
+              field.filter.pattern,
+              e.message,
+            );
+            // Treat invalid regex as no pattern constraint
+          }
+        }
+
+        console.log(
+          '🔍 [CONSTRAINT MATCH] ✅ type + pattern checks passed for value:',
+          match,
         );
+        return true;
       });
     });
   });
