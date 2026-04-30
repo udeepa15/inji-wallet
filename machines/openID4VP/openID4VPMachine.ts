@@ -72,6 +72,10 @@ export const openID4VPMachine = model.createMachine(
               target: 'getKeyPairFromKeystore',
             },
           ],
+          onError: {
+            actions: 'setTrustedVerifiersApiCallError',
+            target: 'getKeyPairFromKeystore',
+          },
         },
       },
       getTrustedVerifiersList: {
@@ -83,6 +87,7 @@ export const openID4VPMachine = model.createMachine(
           },
           onError: {
             actions: 'setTrustedVerifiersApiCallError',
+            target: 'getKeyPairFromKeystore',
           },
         },
       },
@@ -146,7 +151,7 @@ export const openID4VPMachine = model.createMachine(
           },
         },
       },
-      
+
       requestVerifierConsent: {
         entry: ['showTrustConsentModal'],
         on: {
@@ -160,7 +165,7 @@ export const openID4VPMachine = model.createMachine(
           },
         },
       },
-      
+
       delayBeforeDismissToParent: {
         after: {
           200: 'sendDismissToParent',
@@ -170,7 +175,7 @@ export const openID4VPMachine = model.createMachine(
         entry: sendParent('DISMISS'),
         always: 'waitingForData',
       },
-      
+
       storeTrustedVerifier: {
         invoke: {
           src: 'storeTrustedVerifier',
@@ -185,9 +190,9 @@ export const openID4VPMachine = model.createMachine(
           },
         },
       },
-      
+
       getVCsSatisfyingAuthRequest: {
-        entry:["dismissTrustModal"],
+        entry: ['dismissTrustModal'],
         on: {
           DOWNLOADED_VCS: [
             {
@@ -440,9 +445,7 @@ export const openID4VPMachine = model.createMachine(
         },
       },
       shareVPDeclineStatusToVerifier: {
-        entry: [
-          'shareDeclineStatus',
-        ],
+        entry: ['shareDeclineStatus'],
         after: {
           200: {
             actions: sendParent('DISMISS'),

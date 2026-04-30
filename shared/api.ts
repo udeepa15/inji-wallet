@@ -201,14 +201,26 @@ export const CACHED_API = {
       ),
     }),
 
-  getAllProperties: (isCachePreferred: boolean) =>
-    generateCacheAPIFunction({
-      isCachePreferred,
-      cacheKey: COMMON_PROPS_KEY,
-      fetchCall: API.fetchAllProperties,
-      onErrorHardCodedValue: INITIAL_CONFIG.allProperties,
-    }),
+  getAllProperties: (_isCachePreferred: boolean) =>
+    getAllPropertiesFromCacheOrDefault(),
 };
+
+async function getAllPropertiesFromCacheOrDefault() {
+  const fallbackConfig = INITIAL_CONFIG.allProperties;
+  try {
+    const cachedData = await getItem(COMMON_PROPS_KEY, null, '');
+    if (cachedData?.response) {
+      console.info('Returned cached response for ' + COMMON_PROPS_KEY);
+      return cachedData.response;
+    }
+    return fallbackConfig;
+  } catch (error) {
+    console.warn(
+      `Failed to read ${COMMON_PROPS_KEY} from cache. Returning fallback allProperties config.`,
+    );
+    return fallbackConfig;
+  }
+}
 
 interface GenerateCacheAPIFunctionProps {
   isCachePreferred?: boolean;
@@ -249,6 +261,14 @@ async function generateCacheAPIFunctionWithCachePreference(
       console.info('Returned cached response for' + cacheKey);
       return cachedData.response;
     } else {
+      const networkState = await NetInfo.fetch();
+      if (!networkState.isConnected) {
+        if (onErrorHardCodedValue != undefined) {
+          return onErrorHardCodedValue;
+        }
+        throw new Error('Network unavailable and cache is not present');
+      }
+
       const response = await fetchCall();
       if (!response) {
         throw new Error('Received Empty response in fetch call');

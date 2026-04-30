@@ -30,9 +30,7 @@ export const HomeScreen: React.FC<HomeRouteProps> = props => {
   }, [controller.IssuersService]);
 
   const navigateToIssuers = () => {
-    props.navigation.navigate('IssuersScreen', {
-      service: controller.IssuersService,
-    });
+    props.navigation.navigate('IssuersScreen');
   };
 
   const DownloadFABIcon: React.FC = () => {

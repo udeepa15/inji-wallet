@@ -177,7 +177,8 @@ export const getCredentialIssuersWellKnownConfig = async (
           });
         } else if (format === VCFormat.ldp_vc) {
           const ldpFields = Object.keys(
-            matchingWellknownDetails.credential_definition.credentialSubject,
+            matchingWellknownDetails?.credential_definition
+              ?.credentialSubject ?? {},
           );
           if (ldpFields.length > 0) {
             fields = ldpFields;
@@ -187,9 +188,7 @@ export const getCredentialIssuersWellKnownConfig = async (
           format === VCFormat.vc_sd_jwt ||
           format === VCFormat.dc_sd_jwt
         ) {
-          const sdJwtFields = flattenClaimPaths(
-            matchingWellknownDetails.claims,
-          );
+          const sdJwtFields = getSdJwtFieldPaths(matchingWellknownDetails);
 
           if (sdJwtFields.length > 0) {
             fields = sdJwtFields;
@@ -221,9 +220,13 @@ export const getCredentialIssuersWellKnownConfig = async (
   };
 };
 const flattenClaimPaths = (
-  claims: Record<string, any>,
+  claims: Record<string, any> | undefined,
   prefix = '',
 ): string[] => {
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) {
+    return [];
+  }
+
   return Object.entries(claims).flatMap(([key, value]) => {
     const currentPath = prefix ? `${prefix}.${key}` : key;
 
@@ -240,6 +243,50 @@ const flattenClaimPaths = (
       return [currentPath];
     }
   });
+};
+
+const normalizeClaimPath = (path: string): string => {
+  return path.replace(/^\$\.?/, '').replace(/\['([^']+)'\]/g, '.$1');
+};
+
+const getPathsFromClaimPathArray = (claims: any[]): string[] => {
+  return claims
+    .map(claim => {
+      if (!Array.isArray(claim?.path) || claim.path.length === 0) {
+        return null;
+      }
+
+      return claim.path
+        .filter((segment: unknown) => typeof segment === 'string')
+        .map((segment: string) => normalizeClaimPath(segment))
+        .find((segment: string) => segment.length > 0);
+    })
+    .filter((claimPath): claimPath is string => Boolean(claimPath));
+};
+
+const getSdJwtFieldPaths = (matchingWellknownDetails: any): string[] => {
+  if (!matchingWellknownDetails) {
+    return [];
+  }
+
+  if (Array.isArray(matchingWellknownDetails.claims)) {
+    return getPathsFromClaimPathArray(matchingWellknownDetails.claims);
+  }
+
+  if (
+    matchingWellknownDetails.claims &&
+    typeof matchingWellknownDetails.claims === 'object'
+  ) {
+    return flattenClaimPaths(matchingWellknownDetails.claims);
+  }
+
+  if (Array.isArray(matchingWellknownDetails?.credential_metadata?.claims)) {
+    return getPathsFromClaimPathArray(
+      matchingWellknownDetails.credential_metadata.claims,
+    );
+  }
+
+  return [];
 };
 
 export const getDetailedViewFields = async (
